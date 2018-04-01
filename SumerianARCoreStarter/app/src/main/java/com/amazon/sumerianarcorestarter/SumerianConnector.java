@@ -22,6 +22,7 @@ import com.google.ar.core.LightEstimate;
 import com.google.ar.core.Pose;
 import com.google.ar.core.Session;
 import com.google.ar.core.TrackingState;
+import com.google.ar.core.exceptions.CameraNotAvailableException;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -62,40 +63,45 @@ class SumerianConnector {
     }
 
     void update() {
-        final Frame frame = mSession.update();
-        final Camera camera = frame.getCamera();
+        final Frame frame;
+        try {
+            frame = mSession.update();
+            final Camera camera = frame.getCamera();
 
-        if (camera.getTrackingState() == TrackingState.PAUSED) {
-            return;
-        }
-
-        camera.getViewMatrix(mViewMatrix, 0);
-        camera.getProjectionMatrix(mProjectionMatrix, 0, 0.02f, 20.0f);
-
-        final String cameraUpdateString = "ARCoreBridge.viewProjectionMatrixUpdate('" + serializeArray(mViewMatrix) +"', '"+ serializeArray(mProjectionMatrix) + "');";
-        evaluateWebViewJavascript(cameraUpdateString);
-
-        HashMap<String, float[]> anchorMap = new HashMap<>();
-
-        for (Anchor anchor : mSession.getAllAnchors()) {
-            if (anchor.getTrackingState() != TrackingState.TRACKING) {
-                continue;
+            if (camera.getTrackingState() == TrackingState.PAUSED) {
+                return;
             }
 
-            final float[] anchorPoseMatrix = new float[16];
-            anchor.getPose().toMatrix(anchorPoseMatrix, 0);
-            anchorMap.put(String.valueOf(anchor.hashCode()), anchorPoseMatrix);
-        }
+            camera.getViewMatrix(mViewMatrix, 0);
+            camera.getProjectionMatrix(mProjectionMatrix, 0, 0.02f, 20.0f);
 
-        if (anchorMap.size() > 0) {
-            JSONObject jsonAnchors = new JSONObject(anchorMap);
-            final String anchorUpdateScript = "ARCoreBridge.anchorTransformUpdate('" + jsonAnchors.toString() + "');";
-            evaluateWebViewJavascript(anchorUpdateScript);
-        }
+            final String cameraUpdateString = "ARCoreBridge.viewProjectionMatrixUpdate('" + serializeArray(mViewMatrix) +"', '"+ serializeArray(mProjectionMatrix) + "');";
+            evaluateWebViewJavascript(cameraUpdateString);
 
-        if (frame.getLightEstimate().getState() != LightEstimate.State.NOT_VALID) {
-            final String lightEstimateUpdateScript = "ARCoreBridge.lightingEstimateUpdate(" + String.valueOf(frame.getLightEstimate().getPixelIntensity()) + ");";
-            evaluateWebViewJavascript(lightEstimateUpdateScript);
+            HashMap<String, float[]> anchorMap = new HashMap<>();
+
+            for (Anchor anchor : mSession.getAllAnchors()) {
+                if (anchor.getTrackingState() != TrackingState.TRACKING) {
+                    continue;
+                }
+
+                final float[] anchorPoseMatrix = new float[16];
+                anchor.getPose().toMatrix(anchorPoseMatrix, 0);
+                anchorMap.put(String.valueOf(anchor.hashCode()), anchorPoseMatrix);
+            }
+
+            if (anchorMap.size() > 0) {
+                JSONObject jsonAnchors = new JSONObject(anchorMap);
+                final String anchorUpdateScript = "ARCoreBridge.anchorTransformUpdate('" + jsonAnchors.toString() + "');";
+                evaluateWebViewJavascript(anchorUpdateScript);
+            }
+
+            if (frame.getLightEstimate().getState() != LightEstimate.State.NOT_VALID) {
+                final String lightEstimateUpdateScript = "ARCoreBridge.lightingEstimateUpdate(" + String.valueOf(frame.getLightEstimate().getPixelIntensity()) + ");";
+                evaluateWebViewJavascript(lightEstimateUpdateScript);
+            }
+        } catch (CameraNotAvailableException e) {
+            e.printStackTrace();
         }
     }
 
@@ -136,19 +142,23 @@ class SumerianConnector {
                     final float hitTestX = screenX * mWebView.getWidth();
                     final float hitTestY = screenY * mWebView.getHeight();
 
-                    List<HitResult> hitTestResults = mSession.update().hitTest(hitTestX, hitTestY);
+                    List<HitResult> hitTestResults = null;
+                    try {
+                        hitTestResults = mSession.update().hitTest(hitTestX, hitTestY);
+                        final String scriptString;
 
-                    final String scriptString;
+                        if (hitTestResults.size() > 0) {
+                            hitTestResults.get(0).getHitPose().toMatrix(mHitTestResultPose, 0);
+                            scriptString = "ARCoreBridge.hitTestResponse('" + requestId + "', '" + serializeArray(mHitTestResultPose) + "');";
 
-                    if (hitTestResults.size() > 0) {
-                        hitTestResults.get(0).getHitPose().toMatrix(mHitTestResultPose, 0);
-                        scriptString = "ARCoreBridge.hitTestResponse('" + requestId + "', '" + serializeArray(mHitTestResultPose) + "');";
+                        } else {
+                            scriptString = "ARCoreBridge.hitTestResponse('" + requestId + "', null);";
+                        }
 
-                    } else {
-                        scriptString = "ARCoreBridge.hitTestResponse('" + requestId + "', null);";
+                        evaluateWebViewJavascript(scriptString);
+                    } catch (CameraNotAvailableException e) {
+                        e.printStackTrace();
                     }
-
-                    evaluateWebViewJavascript(scriptString);
                 }
             });
         }

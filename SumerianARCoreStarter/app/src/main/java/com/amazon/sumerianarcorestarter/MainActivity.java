@@ -32,13 +32,14 @@ import android.widget.Toast;
 import com.google.ar.core.Config;
 import com.google.ar.core.Frame;
 import com.google.ar.core.Session;
+import com.google.ar.core.exceptions.CameraNotAvailableException;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 public class MainActivity extends AppCompatActivity implements GLSurfaceView.Renderer {
     private static final String TAG = MainActivity.class.getSimpleName();
-    private static final String SCENE_URL = "https://d1550wa51vq95s.cloudfront.net/3d19ea8069a94904849e8edeabe3ada0.scene/?arMode=true";
+    private static final String SCENE_URL = "https://d1tsyd7599mesx.cloudfront.net/61e119b6fcbe4e0993a4c0366251263b.scene/?arMode=true";
 
     private GLSurfaceView mSurfaceView;
     private Session mSession;
@@ -109,7 +110,11 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
             mSumerianConnector.loadUrl(SCENE_URL);
         }
 
-        mSession.resume();
+        try {
+            mSession.resume();
+        } catch (CameraNotAvailableException e) {
+            e.printStackTrace();
+        }
         mSurfaceView.onResume();
     }
 
